@@ -1,0 +1,103 @@
+buildscript {
+	ext {
+		springBootVersion = '2.0.0.RELEASE'
+	}
+	repositories {
+		mavenCentral()
+		maven { url "https://repo.spring.io/snapshot" }
+		maven { url "https://repo.spring.io/milestone" }
+	}
+	dependencies {
+		classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+	}
+}
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'org.springframework.boot'
+apply plugin: 'io.spring.dependency-management'
+
+group = 'com.clodubanco.customer.integration'
+version = '1.0.0-RC1'
+sourceCompatibility = 1.8
+
+repositories {
+	mavenCentral()
+	maven { url "https://repo.spring.io/snapshot" }
+	maven { url "https://repo.spring.io/milestone" }
+}
+
+configurations {
+	jaxb
+}
+
+// tag::wsdl[]
+task genJaxb {
+	ext.sourcesDir = "${buildDir}/generated-sources/jaxb"
+	ext.classesDir = "${buildDir}/classes/jaxb"
+	ext.schema = "http://www.webservicex.com/stockquote.asmx?WSDL"
+
+	outputs.dir classesDir
+
+	doLast() {
+		project.ant {
+			taskdef name: "xjc", classname: "com.sun.tools.xjc.XJCTask",
+					classpath: configurations.jaxb.asPath
+			mkdir(dir: sourcesDir)
+			mkdir(dir: classesDir)
+
+			xjc(destdir: sourcesDir, schema: schema,
+					package: "hello.wsdl") {
+				arg(value: "-wsdl")
+				produces(dir: sourcesDir, includes: "**/*.java")
+			}
+
+			javac(destdir: classesDir, source: 1.8, target: 1.8, debug: true,
+					debugLevel: "lines,vars,source",
+					classpath: configurations.jaxb.asPath) {
+				src(path: sourcesDir)
+				include(name: "**/*.java")
+				include(name: "*.java")
+			}
+
+			copy(todir: classesDir) {
+				fileset(dir: sourcesDir, erroronmissingdir: false) {
+					exclude(name: "**/*.java")
+				}
+			}
+		}
+	}
+}
+// end::wsdl[]
+
+dependencies {
+	compile('org.springframework.boot:spring-boot-starter-web-services')
+
+	compile(files(genJaxb.classesDir).builtBy(genJaxb))
+
+	jaxb "com.sun.xml.bind:jaxb-xjc:2.1.7"
+
+	testCompile('org.springframework.boot:spring-boot-starter-test')
+}
+
+jar {
+	from genJaxb.classesDir
+}
+
+task afterEclipseImport {
+	dependsOn genJaxb
+}
+test {
+	doFirst {
+		jvmArgs = [
+				'--add-modules', 'java.xml.bind,java.xml.ws,java.xml.ws.annotation',
+		]
+	}
+}
+bootRun {
+	doFirst {
+		jvmArgs = [
+				'--add-modules', 'java.xml.bind,java.xml.ws,java.xml.ws.annotation',
+		]
+	}
+}
